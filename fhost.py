@@ -60,8 +60,14 @@ except:
 Please install python-magic.""")
     sys.exit(1)
 
-if not os.path.exists(app.config["FHOST_STORAGE_PATH"]):
-    os.mkdir(app.config["FHOST_STORAGE_PATH"])
+def getpath(fn):
+    return os.path.join(app.config["FHOST_STORAGE_PATH"], fn)
+
+def getwritepath(fn):
+    return os.path.join('/var/www/data', getpath(fn))
+
+if not os.path.exists(getwritepath('')):
+    os.mkdir(getwritepath(''))
 
 db = SQLAlchemy(app)
 migrate = Migrate(app, db)
@@ -119,9 +125,6 @@ class File(db.Model):
             if not v.startswith("_sa"):
                 print("{}: {}".format(v, vals[v]))
 
-def getpath(fn):
-    return os.path.join(app.config["FHOST_STORAGE_PATH"], fn)
-
 def fhost_url(scheme=None):
     if not scheme:
         return url_for(".fhost", _external=True).rstrip("/")
@@ -172,7 +175,7 @@ def store_file(f, addr):
         if existing.removed:
             return legal()
 
-        epath = getpath(existing.sha256)
+        epath = getwritepath(existing.sha256)
 
         if not os.path.exists(epath):
             with open(epath, "wb") as of:
@@ -216,8 +219,9 @@ def store_file(f, addr):
         if not ext:
             ext = ".bin"
 
-        spath = getpath(digest)
-
+        spath = getwritepath(digest)
+        print(spath)
+        
         with open(spath, "wb") as of:
             of.write(data)
 
@@ -265,6 +269,7 @@ def store_url(url, addr):
 @app.route("/<path:path>")
 def get(path):
     p = os.path.splitext(path)
+    print(p)
     id = su.debase(p[0])
 
     if p[1]:
@@ -274,18 +279,17 @@ def get(path):
             if f.removed:
                 return legal()
 
-            fpath = getpath(f.sha256)
-
-            if not os.path.exists(fpath):
+            wpath = getwritepath(f.sha256)
+            if not os.path.exists(wpath):
                 abort(404)
-
-            fsize = os.path.getsize(fpath)
-
+            fsize = os.path.getsize(wpath)
+            
+            rpath = getpath(f.sha256)
             if app.config["FHOST_USE_X_ACCEL_REDIRECT"]:
                 response = make_response()
                 response.headers["Content-Type"] = f.mime
                 response.headers["Content-Length"] = fsize
-                response.headers["X-Accel-Redirect"] = "/" + fpath
+                response.headers["X-Accel-Redirect"] = "/" + rpath
                 return response
             else:
                 return send_from_directory(app.config["FHOST_STORAGE_PATH"], f.sha256, mimetype = f.mime)
@@ -445,8 +449,8 @@ def permadelete(name):
     f = File.query.get(id)
 
     if f:
-        if os.path.exists(getpath(f.sha256)):
-            os.remove(getpath(f.sha256))
+        if os.path.exists(getwritepath(f.sha256)):
+            os.remove(getwritepath(f.sha256))
         f.removed = True
         db.session.commit()
 
@@ -483,8 +487,8 @@ def deladdr(a):
     res = File.query.filter_by(addr=a).filter(File.removed != True)
 
     for f in res:
-        if os.path.exists(getpath(f.sha256)):
-            os.remove(getpath(f.sha256))
+        if os.path.exists(getwritepath(f.sha256)):
+            os.remove(getwritepath(f.sha256))
         f.removed = True
 
     db.session.commit()
@@ -510,7 +514,7 @@ def update_nsfw():
 
     with Pool() as p:
         results = []
-        work = [{ "path" : getpath(f.sha256), "id" : f.id} for f in res]
+        work = [{ "path" : getwritepath(f.sha256), "id" : f.id} for f in res]
 
         for r in tqdm.tqdm(p.imap_unordered(nsfw_detect, work), total=len(work)):
             if r:

@@ -106,16 +106,17 @@ class File(db.Model):
         self.addr = addr
         self.nsfw_score = nsfw_score
 
-    def getname(self):
-        return u"{0}{1}".format(su.enbase(self.id, 1), self.ext)
+    def getname(self, include_ext=True):
+        return u"{0}{1}".format(su.enbase(self.id, 1),
+                                self.ext if include_ext else '')
 
-    def geturl(self):
-        n = self.getname()
+    def geturl(self, include_ext=True):
+        n = self.getname(include_ext=include_ext)
 
         if self.nsfw_score and self.nsfw_score > app.config["NSFW_THRESHOLD"]:
-            return url_for("get", path=n, _external=True, _anchor="nsfw") + "\n"
+            return url_for("get", path=n, _external=True, _anchor="nsfw")
         else:
-            return url_for("get", path=n, _external=True) + "\n"
+            return url_for("get", path=n, _external=True)
 
     def pprint(self):
         print("url: {}".format(self.getname()))
@@ -124,6 +125,17 @@ class File(db.Model):
         for v in vals:
             if not v.startswith("_sa"):
                 print("{}: {}".format(v, vals[v]))
+
+class TorrentFile(db.Model):
+    id = db.Column(db.Integer, primary_key = True)
+    file_id = db.Column(db.Integer)
+    hashed = db.Column(db.Boolean, default=False)
+    magnet = db.Column(db.UnicodeText)
+
+    def geturl(self):
+      f = File.query.get(self.file_id)
+      base = f.geturl(include_ext=False)
+      return '%s.torrent\n' % base
 
 def fhost_url(scheme=None):
     if not scheme:
@@ -189,7 +201,11 @@ def store_file(f, addr):
         existing.addr = addr
         db.session.commit()
 
-        return existing.geturl()
+        torrent = TorrentFile.query.filter_by(file_id=existing.id).first()
+        if torrent:
+          return torrent.geturl()
+        else:
+          return existing.geturl() + '\n'
     else:
         guessmime = mimedetect.from_buffer(data)
 
@@ -220,7 +236,6 @@ def store_file(f, addr):
             ext = ".bin"
 
         spath = getwritepath(digest)
-        print(spath)
         
         with open(spath, "wb") as of:
             of.write(data)
@@ -234,7 +249,11 @@ def store_file(f, addr):
         db.session.add(sf)
         db.session.commit()
 
-        return sf.geturl()
+        torrent = TorrentFile(file_id=sf.id, hashed=False, magnet=None)
+        db.session.add(torrent)
+        db.session.commit()
+
+        return torrent.geturl()
 
 def store_url(url, addr):
     if is_fhost_url(url):
@@ -269,10 +288,12 @@ def store_url(url, addr):
 @app.route("/<path:path>")
 def get(path):
     p = os.path.splitext(path)
-    print(p)
     id = su.debase(p[0])
 
     if p[1]:
+        if p[1] == '.torrent':
+          return 'Torrent support coming soon'
+
         f = File.query.get(id)
 
         if f and f.ext == p[1]:

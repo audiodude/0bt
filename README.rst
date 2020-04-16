@@ -3,6 +3,10 @@
 A fork of `0x0 <https://github.com/mia-0/0x0>`_ that provides torrent magnet
 links and seeding abilities.
 
+Below is the full contents of the README forked from there.
+
+Forked README
+=============
 This is a no-bullshit file hosting and URL shortening service that also runs
 `0x0.st <https://0x0.st>`_. Use with uWSGI.
 

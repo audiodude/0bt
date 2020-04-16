@@ -12,7 +12,9 @@ from mimetypes import guess_extension
 import os, sys
 import requests
 from short_url import UrlEncoder
+from torf import Torrent
 from validators import url as url_valid
+from urllib.parse import urlparse
 
 app = Flask(__name__)
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
@@ -175,10 +177,19 @@ def in_upload_bl(addr):
 
     return False
 
+def create_torrent_file(torrent, f, name):
+  fpath = getwritepath(f.sha256)
+  t = Torrent(fpath, name or None)
+  t.generate()
+  tpath = '%s.torrent' % fpath
+  t.write(tpath)
+  torrent.magnet = str(t.magnet())
+
 def store_file(f, addr):
     if in_upload_bl(addr):
         return "Your host is blocked from uploading files.\n", 451
 
+    name = f.filename
     data = f.stream.read()
     digest = sha256(data).hexdigest()
     existing = File.query.filter_by(sha256=digest).first()
@@ -203,7 +214,7 @@ def store_file(f, addr):
 
         torrent = TorrentFile.query.filter_by(file_id=existing.id).first()
         if torrent:
-          return torrent.geturl()
+          return torrent.magnet + '\n'
         else:
           return existing.geturl() + '\n'
     else:
@@ -250,10 +261,11 @@ def store_file(f, addr):
         db.session.commit()
 
         torrent = TorrentFile(file_id=sf.id, hashed=False, magnet=None)
+        create_torrent_file(torrent, sf, name)
         db.session.add(torrent)
         db.session.commit()
 
-        return torrent.geturl()
+        return torrent.magnet + '\n'
 
 def store_url(url, addr):
     if is_fhost_url(url):
@@ -261,6 +273,11 @@ def store_url(url, addr):
 
     h = { "Accept-Encoding" : "identity" }
     r = requests.get(url, stream=True, verify=False, headers=h)
+
+    try:
+      filename = os.path.basename(urlparse(url).path)
+    except:
+      filename = 'magnet file'
 
     try:
         r.raise_for_status()
@@ -274,7 +291,7 @@ def store_url(url, addr):
             def urlfile(**kwargs):
                 return type('',(),kwargs)()
 
-            f = urlfile(stream=r.raw, content_type=r.headers["content-type"], filename="")
+            f = urlfile(stream=r.raw, content_type=r.headers["content-type"], filename=filename)
 
             return store_file(f, addr)
         else:
@@ -291,29 +308,33 @@ def get(path):
     id = su.debase(p[0])
 
     if p[1]:
-        if p[1] == '.torrent':
-          return 'Torrent support coming soon'
-
         f = File.query.get(id)
-
-        if f and f.ext == p[1]:
+        if (f and f.ext == p[1]) or p[1] == '.torrent':
             if f.removed:
                 return legal()
 
-            wpath = getwritepath(f.sha256)
+            if p[1] == '.torrent':
+              suffix = '.torrent'
+            else:
+              suffix = ''
+
+            wpath = getwritepath(f.sha256 + suffix)
             if not os.path.exists(wpath):
-                abort(404)
+              abort(404)
             fsize = os.path.getsize(wpath)
             
-            rpath = getpath(f.sha256)
+            rpath = getpath(f.sha256 + suffix)
             if app.config["FHOST_USE_X_ACCEL_REDIRECT"]:
                 response = make_response()
                 response.headers["Content-Type"] = f.mime
                 response.headers["Content-Length"] = fsize
                 response.headers["X-Accel-Redirect"] = "/" + rpath
+                response.headers["X-Accel-Redirect"] = "/" + rpath
                 return response
             else:
-                return send_from_directory(app.config["FHOST_STORAGE_PATH"], f.sha256, mimetype = f.mime)
+                return send_from_directory(app.config["FHOST_STORAGE_PATH"], 
+                                           f.sha256,
+                                           mimetype=f.mime)
     else:
         u = URL.query.get(id)
 

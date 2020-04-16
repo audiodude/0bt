@@ -4,7 +4,7 @@
 name = "0bt"
 version = "0.2.0"
 description = "A tool for creating torrents and magnet links automatically from command line file uploads. Based on 0x0"
-authors = ["@mia@nazrin.moe", "Travis Briggs <audiodude@gmail.com>"]
+authors = ["Martin Herkt <lachs0r@srsfckn.biz>", "Travis Briggs <audiodude@gmail.com>"]
 
 [tool.poetry.dependencies]
 python = "3.6.9"

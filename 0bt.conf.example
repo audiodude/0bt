@@ -1,0 +1,20 @@
+server {                                                                          listen 443 ssl default_server;
+  listen [::]:443 ssl default_server;
+
+  # Generate these with certbot/letsencrypt.
+  ssl_certificate /etc/letsencrypt/live/<DOMAIN_NAME>/fullchain.pem;
+  ssl_certificate_key /etc/letsencrypt/live/<DOMAIN_NAME>/privkey.pem;
+  
+  server_name <DOMAIN_NAME>;
+  
+  client_max_body_size 700M; 
+
+  location / {
+    proxy_pass 127.0.0.1:7321;
+  }
+
+  location up/ {
+    internal;
+    root /opt/data/;
+  }
+}

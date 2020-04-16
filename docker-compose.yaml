@@ -1,0 +1,38 @@
+version: "3.5"
+services:
+  python:
+    image: audiodude/0bt
+    container_name: 0bt
+    volumes:
+      - /opt/data/:/var/www/data/up
+    ports:
+      - 7321:7321
+      
+  transmission:
+    image: linuxserver/transmission
+    container_name: transmission
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=America/Los_Angeles
+      - USER=transmission
+      - PASS=transmission
+    volumes:
+      - /opt/config/transmission:/config
+      - /opt/data:/downloads
+      - /dev/null:/watch
+    ports:
+      - 51413:51413
+      - 51413:51413/udp
+    restart: unless-stopped
+
+  tracker:
+    image: lednerb/opentracker-docker
+    container_name: tracker
+    ports:
+      - 5555:6969
+      - 5555:6969/udp
+
+networks:
+  default:
+    name: 0bt

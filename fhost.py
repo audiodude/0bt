@@ -12,9 +12,11 @@ from mimetypes import guess_extension
 import os, sys
 import requests
 from short_url import UrlEncoder
+import shutil
+import subprocess
 from torf import Torrent
-from validators import url as url_valid
 from urllib.parse import urlparse
+from validators import url as url_valid
 
 app = Flask(__name__)
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
@@ -179,11 +181,20 @@ def in_upload_bl(addr):
 
 def create_torrent_file(torrent, f, name):
   fpath = getwritepath(f.sha256)
-  t = Torrent(fpath, name or None)
+  t = Torrent(path=fpath,
+              name=name,
+              trackers=['http://0.0-z-0.com:5555/announce'])
   t.generate()
   tpath = '%s.torrent' % fpath
   t.write(tpath)
   torrent.magnet = str(t.magnet())
+
+  # TODO: Check for errors here and don't hardcode the paths.
+  subprocess.run(['transmission-remote',
+                  '-N', '/home/tmoney/code/0x0/transmission.netrc',
+                  '-x', '-y',
+                  '-a', tpath,
+                  '--find', '/var/www/data/up/'])
 
 def store_file(f, addr):
     if in_upload_bl(addr):
@@ -192,6 +203,8 @@ def store_file(f, addr):
     name = f.filename
     data = f.stream.read()
     digest = sha256(data).hexdigest()
+    if name is None:
+      name = digest
     existing = File.query.filter_by(sha256=digest).first()
 
     if existing:
@@ -199,10 +212,11 @@ def store_file(f, addr):
             return legal()
 
         epath = getwritepath(existing.sha256)
-
-        if not os.path.exists(epath):
+        npath = getwritepath(name)
+        if not os.path.exists(epath) or not os.path.exists(npath):
             with open(epath, "wb") as of:
                 of.write(data)
+            shutil.copyfile(epath, npath)
 
         if existing.nsfw_score == None:
             if app.config["NSFW_DETECT"]:
@@ -247,9 +261,10 @@ def store_file(f, addr):
             ext = ".bin"
 
         spath = getwritepath(digest)
-        
+        npath = getwritepath(name)
         with open(spath, "wb") as of:
             of.write(data)
+        shutil.copyfile(spath, npath)
 
         if app.config["NSFW_DETECT"]:
             nsfw_score = nsfw.detect(spath)
@@ -277,7 +292,7 @@ def store_url(url, addr):
     try:
       filename = os.path.basename(urlparse(url).path)
     except:
-      filename = 'magnet file'
+      filename = None
 
     try:
         r.raise_for_status()
@@ -291,7 +306,9 @@ def store_url(url, addr):
             def urlfile(**kwargs):
                 return type('',(),kwargs)()
 
-            f = urlfile(stream=r.raw, content_type=r.headers["content-type"], filename=filename)
+            f = urlfile(stream=r.raw,
+                        content_type=r.headers["content-type"],
+                        filename=filename)
 
             return store_file(f, addr)
         else:

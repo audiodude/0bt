@@ -201,7 +201,9 @@ def in_upload_bl(addr):
 
 def create_torrent_file(torrent, f, name):
   fpath = getwritepath(f.sha256)
-  t = Torrent(path=fpath, name=name, trackers=[":5555/announce"])
+  t = Torrent(path=fpath,
+              name=name,
+              trackers=["%s:5555/announce" % fhost_url()])
   t.generate()
   tpath = "%s.torrent" % fpath
   t.write(tpath)

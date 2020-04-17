@@ -26,4 +26,6 @@ RUN poetry config virtualenvs.create false \
 # Creating folders, and files for a project:
 COPY . /app/
 
+RUN mkdir -p /var/www/data/up
+RUN python fhost.py db upgrade
 CMD gunicorn -b 0.0.0.0:7321 'fhost:app'

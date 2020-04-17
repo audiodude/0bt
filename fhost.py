@@ -28,6 +28,11 @@ app.config[
     "SQLALCHEMY_DATABASE_URI"] = "sqlite:///db.sqlite"  # "postgresql://0x0@/0x0"
 app.config[
     "PREFERRED_URL_SCHEME"] = "https"  # nginx users: make sure to have 'uwsgi_param UWSGI_SCHEME $scheme;' in your config
+
+server_name = os.environ.get('SERVER_NAME')
+if server_name:
+  app.config["SERVER_NAME"] = server_name
+
 app.config["MAX_CONTENT_LENGTH"] = 650 * 1024 * 1024
 app.config["MAX_URL_LENGTH"] = 4096
 app.config["FHOST_STORAGE_PATH"] = "up"

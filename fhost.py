@@ -25,13 +25,9 @@ app = Flask(__name__)
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 
 app.config[
-    "SQLALCHEMY_DATABASE_URI"] = "sqlite:///db.sqlite"  # "postgresql://0x0@/0x0"
+    "SQLALCHEMY_DATABASE_URI"] = "sqlite:///db/db.sqlite"  # "postgresql://0x0@/0x0"
 app.config[
     "PREFERRED_URL_SCHEME"] = "https"  # nginx users: make sure to have 'uwsgi_param UWSGI_SCHEME $scheme;' in your config
-
-server_name = os.environ.get('SERVER_NAME')
-if server_name:
-  app.config["SERVER_NAME"] = server_name
 
 app.config["MAX_CONTENT_LENGTH"] = 650 * 1024 * 1024
 app.config["MAX_URL_LENGTH"] = 4096
@@ -159,7 +155,7 @@ class TorrentFile(db.Model):
   def geturl(self):
     f = File.query.get(self.file_id)
     base = f.geturl(include_ext=False)
-    return "%s.torrent\n" % base
+    return "%s.torrent" % base
 
 
 def fhost_url(scheme=None):
@@ -217,14 +213,15 @@ def create_torrent_file(torrent, f, name):
   # TODO: Check for errors here and don't hardcode the paths.
   subprocess.run([
       "transmission-remote",
+      "transmission:9091",
       "-N",
-      "/home/tmoney/code/0x0/transmission.netrc",
+      "/app/config/transmission.netrc",
       "-x",
       "-y",
       "-a",
       tpath,
       "--find",
-      "/var/www/data/up/",
+      "/downloads",
   ])
 
 
@@ -260,7 +257,7 @@ def store_file(f, addr):
 
     torrent = TorrentFile.query.filter_by(file_id=existing.id).first()
     if torrent:
-      return torrent.magnet + "\n"
+      return '%s\n%s\n%s\n' % (existing.geturl(), torrent.geturl(), torrent.magnet)
     else:
       return existing.geturl() + "\n"
   else:
@@ -314,7 +311,7 @@ def store_file(f, addr):
     db.session.add(torrent)
     db.session.commit()
 
-    return torrent.magnet + "\n"
+    return '%s\n%s\n%s\n' % (sf.geturl(), torrent.geturl(), torrent.magnet)
 
 
 def store_url(url, addr):

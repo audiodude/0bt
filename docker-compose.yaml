@@ -4,10 +4,12 @@ services:
     image: audiodude/0bt
     container_name: 0bt
     volumes:
-      - /opt/data/:/var/www/data/up
+      - /opt/data:/var/www/data/up
+      - /opt/app/db:/app/db
+      - /opt/app/config:/app/config
     ports:
       - 7321:7321
-      
+
   transmission:
     image: linuxserver/transmission
     container_name: transmission
@@ -18,10 +20,11 @@ services:
       - USER=transmission
       - PASS=transmission
     volumes:
-      - /opt/config/transmission:/config
+      - /opt/transmission/config:/config
       - /opt/data:/downloads
-      - /dev/null:/watch
+      - /opt/transmission/watch:/watch
     ports:
+      - 9091:9091
       - 51413:51413
       - 51413:51413/udp
     restart: unless-stopped

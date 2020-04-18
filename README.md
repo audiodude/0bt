@@ -16,6 +16,7 @@ To run the install script:
 
 1. First install docker and nginx.
 1. Then run certbot to install letsencrypt certs for your server.
+1. Make sure your firewall settings allow the following: 443/tcp, 51413/tcp, 51413/udp, 5555/tcp, 5555/udp
 1. Next install jinja2, either globally or in a virtual env:
    `$ pip3 install jinja2`
    or

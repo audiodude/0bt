@@ -133,9 +133,9 @@ class File(db.Model):
     n = self.getname(include_ext=include_ext)
 
     if self.nsfw_score and self.nsfw_score > app.config["NSFW_THRESHOLD"]:
-      return url_for("get", path=n, _external=True, _anchor="nsfw")
+      return url_for("get", path=n, _external=True, _anchor="nsfw", _scheme='https')
     else:
-      return url_for("get", path=n, _external=True)
+      return url_for("get", path=n, _external=True, _scheme='https')
 
   def pprint(self):
     print("url: {}".format(self.getname()))

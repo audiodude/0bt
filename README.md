@@ -21,4 +21,8 @@ To run the install script:
    `$ pip3 install jinja2`
    or
    `$ python3 -m venv vevn && source venv/bin/activate && pip install jinja2`
-1. Finally run the install script as root: `$ sudo python3 install.py`
+1. Run the install script as root: `$ sudo python3 install.py`
+1. Restart nginx and start docker-compose: `$ sudo service nginx restart` and `$ docker-compose up -d`
+1. Stop the transmission client `$ docker-compose stop transmission`
+1. Edit /opt/transmission/config/settings.json and set `"port-forwarding-enabled"` to `false`.
+1. Restart the transmission client `$ docker-compose start transmission`

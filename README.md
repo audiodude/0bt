@@ -2,81 +2,23 @@
 A fork of [0x0](https://github.com/mia-0/0x0) that provides torrent magnet links
 and seeding abilities.
 
-Below is the full contents of the README forked from there.
+# Installation instructions
+This software is meant to be run in a docker container alongside additional software (a bittorrent
+client and a bittorrent tracker). All of the necessary configuration is contained within the
+`docker-compose.yaml` file.
 
-## Forked README
+I have provided an install script that creates the necessary nginx config for the server, as well
+as creates the necessary file system paths that the docker compose file maps to paths within the
+containers. You will need python 3 and jinja2 to run the install script. If you are comfortable 
+running the install steps manually you can forgo the script altogether.
 
-This is a no-bullshit file hosting and URL shortening service that also
-runs [0x0.st](https://0x0.st). Use with uWSGI.
+To run the install script:
 
-If you are running nginx, you should use the `X-Accel-Redirect` header.
-To make it work, include this in your nginx config's `server` block:
-
-    location /up {
-        internal;
-    }
-
-where `/up` is whatever you've configured as `FHOST_STORAGE_PATH` in
-`fhost.py`.
-
-For all other servers, set `FHOST_USE_X_ACCEL_REDIRECT` to `False` and
-`USE_X_SENDFILE` to `True`, assuming your server supports this.
-Otherwise, Flask will serve the file with chunked encoding, which sucks
-and should be avoided at all costs.
-
-To make files expire, simply create a cronjob that runs `cleanup.py`
-every now and then.
-
-Before running the service for the first time, run
-`./fhost.py db upgrade`.
-
-NSFW Detection
---------------
-
-0x0 supports classification of NSFW content via Yahoo's open\_nsfw Caffe
-neural network model. This works for images and video files and requires
-the following:
-
--   Caffe Python module (built for Python 3)
--   `ffmpegthumbnailer` executable in `$PATH`
-
-FAQ
----
-
-Q:
-
-:   Will you ever add a web interface with HTML forms?
-
-A:
-
-:   No. This would without a doubt make it very popular and quickly
-    exceed my hosting budget unless I started crippling it.
-
-Q:
-
-:   What about file management? Will I be able to register an account at
-    some point?
-
-A:
-
-:   No.
-
-Q:
-
-:   Why are you storing IP addresses with each uploaded file?
-
-A:
-
-:   This is done to make dealing with legal claims and accidental
-    uploads easier, e.g. when a user requests removal of all text files
-    uploaded from a certain address within a given time frame (it
-    happens).
-
-Q:
-
-:   Do you accept donations?
-
-A:
-
-:   Only if you insist. I've spent very little time and effort on this
-    service and I don't feel like I should be taking money for it.
+1. First install docker and nginx.
+1. Then run certbot to install letsencrypt certs for your server.
+1. Make sure your firewall settings allow the following: 443/tcp, 51413/tcp, 51413/udp, 5555/tcp, 5555/udp
+1. Next install jinja2, either globally or in a virtual env:
+   `$ pip3 install jinja2`
+   or
+   `$ python3 -m venv vevn && source venv/bin/activate && pip install jinja2`
+1. Finally run the install script as root: `$ sudo python3 install.py`

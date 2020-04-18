@@ -15,8 +15,9 @@ running the install steps manually you can forgo the script altogether.
 To run the install script:
 
 1. First install docker and nginx.
-2. Next install jinja2, either globally or in a virtual env:
+1. Then run certbot to install letsencrypt certs for your server.
+1. Next install jinja2, either globally or in a virtual env:
    `$ pip3 install jinja2`
    or
    `$ python3 -m venv vevn && source venv/bin/activate && pip install jinja2`
-3. Finally run the install script as root: `$ sudo python3 install.py`
+1. Finally run the install script as root: `$ sudo python3 install.py`

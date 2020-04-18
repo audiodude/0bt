@@ -28,8 +28,7 @@ nginx_path = '/etc/nginx/sites-available/%s' % server_name
 print(' - Creating nginx config at %s' % nginx_path)
 with open('templates/nginx.conf.tmpl') as f:
   template = Template(f.read())
-with open(nginx_path, 'w') as f:
-  f.write(template.render(server_name=server_name))
+template.stream(server_name=server_name).dump(nginx_path, encoding='utf-8')
 
 # Link the nginx config into sites-enabled.
 print(' - Linking nginx config to sites-enabled')

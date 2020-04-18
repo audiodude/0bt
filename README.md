@@ -12,7 +12,7 @@ as creates the necessary file system paths that the docker compose file maps to 
 containers. You will need python 3 and jinja2 to run the install script. If you are comfortable 
 running the install steps manually you can forgo the script altogether.
 
-To run the install script:
+To install and run this server (and the servers it depends on):
 
 1. First install docker and nginx.
 1. Then run certbot to install letsencrypt certs for your server.

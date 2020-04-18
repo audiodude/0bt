@@ -10,7 +10,11 @@ client and a bittorrent tracker). All of the necessary configuration is containe
 I have provided an install script that creates the necessary nginx config for the server, as well
 as creates the necessary file system paths that the docker compose file maps to paths within the
 containers. You will need python 3 and jinja2 to run the install script. If you are comfortable 
-running the install steps manually you can forgo the script altogether.
+configuring your system manually, you might try that too, which wouldn't require python or the 
+script.
+
+## Non-manual install steps
+Even with the install script, there are certain steps to follow currently.
 
 To install and run this server (and the servers it depends on):
 
@@ -20,7 +24,7 @@ To install and run this server (and the servers it depends on):
 1. Next install jinja2, either globally or in a virtual env:
    `$ pip3 install jinja2`
    or
-   `$ python3 -m venv vevn && source venv/bin/activate && pip install jinja2`
+   `$ python3 -m venv venv && source venv/bin/activate && pip install jinja2`
 1. Run the install script as root: `$ sudo python3 install.py`
 1. Restart nginx and start docker-compose: `$ sudo service nginx restart` and `$ docker-compose up -d`
 1. Stop the transmission client `$ docker-compose stop transmission`

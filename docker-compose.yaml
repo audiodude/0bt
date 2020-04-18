@@ -18,7 +18,7 @@ services:
       - PGID=1000
       - TZ=America/Los_Angeles
       - USER=transmission
-      - PASS=transmission
+      - PASS="${TRANSMISSION_PW}"
     volumes:
       - /opt/transmission/config:/config
       - /opt/data:/downloads
@@ -35,6 +35,7 @@ services:
     ports:
       - 5555:6969
       - 5555:6969/udp
+    restart: unless-stopped
 
 networks:
   default:

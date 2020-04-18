@@ -2,10 +2,10 @@ server {                                                                        
   listen [::]:443 ssl default_server;
 
   # Generate these with certbot/letsencrypt.
-  ssl_certificate /etc/letsencrypt/live/<DOMAIN_NAME>/fullchain.pem;
-  ssl_certificate_key /etc/letsencrypt/live/<DOMAIN_NAME>/privkey.pem;
+  ssl_certificate /etc/letsencrypt/live/{{server_name}}/fullchain.pem;
+  ssl_certificate_key /etc/letsencrypt/live/{{server_name}}/privkey.pem;
   
-  server_name <DOMAIN_NAME>;
+  server_name {{server_name}};
   
   client_max_body_size 700M; 
 

@@ -63,7 +63,8 @@ sed -i "s|^CADDY_DOMAIN=.*|CADDY_DOMAIN=$CADDY_DOMAIN|" .env
 sed -i "s|^CADDY_ADMIN_EMAIL=.*|CADDY_ADMIN_EMAIL=$CADDY_ADMIN_EMAIL|" .env
 
 echo "[5/5] bring up the stack"
-docker compose --profile caddy pull --quiet
+# Don't `docker compose pull` separately — it errors on the locally-built
+# `0bt-app:local` image. `up --build` builds the app and pulls everything else.
 docker compose --profile caddy up -d --build
 
 cat <<EOF

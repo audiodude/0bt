@@ -44,15 +44,14 @@ curl -sS -m 60 -o "$TORRENT_FILE" "$TURL"
 ok "saved .torrent ($(stat -c %s "$TORRENT_FILE") bytes)"
 
 echo ""
-echo "=== run libtorrent peer that connects directly to Railway ==="
+echo "=== run libtorrent peer (tracker-only discovery; NO connect_peer hint) ==="
 sudo docker rm -f rw-lt-peer 2>/dev/null || true
 
-# The peer image: debian:trixie-slim has python3-libtorrent.
-# We mount the .torrent file in and connect-peer to the deployed seed.
+# Critical: this peer is given only the magnet/.torrent. It must discover the
+# Railway-hosted seeder via the in-app /announce tracker baked into the torrent.
+# No connect_peer hint, no other channel.
 sudo docker run --rm --name rw-lt-peer \
   -v "$WORK:/work:ro" \
-  -e PEER_HOST="$BT_PUBLIC_HOST" \
-  -e PEER_PORT="$BT_PUBLIC_PORT" \
   -e EXPECTED_SHA="$SHA_IN" \
   debian:trixie-slim sh -c '
 set -e
@@ -60,16 +59,14 @@ apt-get update -qq >/dev/null
 DEBIAN_FRONTEND=noninteractive apt-get install -qq -y python3 python3-libtorrent ca-certificates >/dev/null
 mkdir -p /tmp/dl
 python3 - <<PY
-import sys, os, time, hashlib, socket
+import sys, os, time, hashlib
 import libtorrent as lt
 
-PEER_HOST = os.environ["PEER_HOST"]
-PEER_PORT = int(os.environ["PEER_PORT"])
 EXPECTED_SHA = os.environ["EXPECTED_SHA"]
 
 ses = lt.session({
     "listen_interfaces": "0.0.0.0:6881",
-    "enable_dht": False,
+    "enable_dht": False,        # disabled to prove it works without DHT
     "enable_lsd": False,
     "enable_natpmp": False,
     "enable_upnp": False,
@@ -80,41 +77,30 @@ ses = lt.session({
 with open("/work/payload.torrent", "rb") as f:
     ti = lt.torrent_info(f.read())
 
-params = {
-    "ti": ti,
-    "save_path": "/tmp/dl",
-}
-h = ses.add_torrent(params)
+h = ses.add_torrent({"ti": ti, "save_path": "/tmp/dl"})
+print("[lt] handed magnet to libtorrent; relying on tracker for discovery", flush=True)
 
-ip = socket.gethostbyname(PEER_HOST)
-print(f"[lt] connecting peer {PEER_HOST}({ip}):{PEER_PORT}", flush=True)
-h.connect_peer((ip, PEER_PORT), 0)
-
-# Poll
 deadline = time.time() + 240
 last_pct = -1
 while time.time() < deadline:
     s = h.status()
     pct = int(s.progress * 100)
-    n_peers = s.num_peers
     if pct != last_pct:
-        sys.stdout.write(f"\r[lt] progress={pct}% peers={n_peers} state={s.state} dl={int(s.download_rate)}B/s ")
+        sys.stdout.write(f"\r[lt] progress={pct}% peers={s.num_peers} state={s.state} dl={int(s.download_rate)}B/s ")
         sys.stdout.flush()
         last_pct = pct
     if s.is_seeding:
         print()
         break
-    # Periodically re-add the peer in case lt drops it
-    if int(time.time()) % 30 == 0:
-        try: h.connect_peer((ip, PEER_PORT), 0)
-        except Exception: pass
     time.sleep(2)
 else:
     print()
     print("[lt] TIMEOUT")
+    print("[lt] tracker stats:")
+    for tr in h.trackers():
+        print("   " + str(tr.get("url")) + " status=" + str(tr.get("message", "")) + " verified=" + str(tr.get("verified", False)))
     sys.exit(1)
 
-# Verify
 files = ti.files()
 name = files.file_path(0)
 path = os.path.join("/tmp/dl", name)
@@ -129,9 +115,8 @@ print(f"[lt] sha256={got}")
 if got == EXPECTED_SHA:
     print("[lt] MATCH")
     sys.exit(0)
-else:
-    print(f"[lt] MISMATCH (expected {EXPECTED_SHA})")
-    sys.exit(2)
+print(f"[lt] MISMATCH (expected {EXPECTED_SHA})")
+sys.exit(2)
 PY
 '
 RC=$?

@@ -104,15 +104,11 @@ The script (idempotently):
    announces (and listens on) the externally-reachable port.
 5. Triggers a redeploy.
 
-For optional self-hosted opentracker on Railway, create a second service with `lednerb/opentracker-docker:latest` as the source image plus a TCP proxy on port 6969, then set `FHOST_INTERNAL_TRACKER=http://<tracker_proxy>/announce` on the app service.
+### How peers discover the deployed seeder
 
-### Caveat: announce-ip and opentracker
+External BT trackers (opentracker included) and DHT both record the *source IP* of an announce, which behind a TCP proxy is the platform's egress address — unreachable inbound. To work around this, **the app runs its own HTTP tracker at `/announce`** (see [`app/tracker.py`](./app/tracker.py)). It's the first `tr=` entry in every magnet, and it serves the deployed seeder's public host:port (taken from `BT_PUBLIC_HOST` / `BT_PUBLIC_PORT`) as a peer for any info_hash the app owns. Hostnames are passed through *unresolved* so peers resolve them from their own (public-internet) DNS view rather than the platform's internal one. [`scripts/swarm-test-railway.sh`](./scripts/swarm-test-railway.sh) verifies this end-to-end without using `connect_peer` hints.
 
-When the deployed transmission sits behind a TCP proxy, public BT trackers and opentracker both record the *source IP* of the announce request — which is the platform's egress address, not the public proxy address. Other peers therefore can't reach the seeder via tracker-mediated discovery. Two practical workarounds:
-1. Connect peers directly via the BT peer-wire protocol if you know the proxy host:port (see [`scripts/swarm-test-railway.sh`](./scripts/swarm-test-railway.sh) for an example using libtorrent).
-2. Front the deploy with a tracker that honors the `&ip=` override (XBT-style); opentracker does not.
-
-In real-world operation, if peers know the magnet, public trackers + DHT + webseed (all included by default) provide multiple swarm-discovery paths.
+Public trackers and DHT remain in the magnet for swarm fan-out once any peer is reachable; the in-app tracker is what makes the deployed instance discoverable in the first place.
 
 ## License
 

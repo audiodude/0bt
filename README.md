@@ -50,7 +50,7 @@ docker compose --profile caddy up -d --build
 
 Caddy auto-issues a Let's Encrypt cert and reverse-proxies the app. Open ports `80`, `443`, and `51413` (TCP+UDP) on your firewall.
 
-The recommended hosting target is a small VPS with generous bundled egress (egress is the dominant cost for any file host). See [`docs/deploy-hetzner.md`](./docs/deploy-hetzner.md) for an end-to-end walkthrough on Hetzner Cloud CX22 (~€5/mo, 20 TB included).
+The recommended hosting target is a small VPS with generous bundled egress (egress is the dominant cost for any file host). See [`docs/deploy-hetzner.md`](./docs/deploy-hetzner.md) for an end-to-end walkthrough on Hetzner Cloud CX23 (~€3.50/mo, 20 TB included).
 
 ## Configuration
 

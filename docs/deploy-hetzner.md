@@ -1,6 +1,6 @@
-# Deploying 0bt on Hetzner Cloud (CX22)
+# Deploying 0bt on Hetzner Cloud (CX23)
 
-This is the recommended production path. A CX22 (€4.51/mo, 2 vCPU / 4 GB RAM / 40 GB SSD / **20 TB egress included**) is enough to host a small-to-mid file host indefinitely.
+This is the recommended production path. A CX23 (€3.49/mo, 2 vCPU / 4 GB RAM / 40 GB SSD / **20 TB egress included**) is enough to host a small-to-mid file host indefinitely.
 
 The whole flow is generic Linux + Docker; nothing here is Hetzner-locked. Substitute another provider (Scaleway, OVH, DigitalOcean, …) and the steps are identical past the first command.
 
@@ -14,14 +14,14 @@ The whole flow is generic Linux + Docker; nothing here is Hetzner-locked. Substi
 
 ## 1. Provision the server
 
-Web UI: New Project → New Server → CX22 / Debian 13 / your SSH key / **enable Backups (€1.30/mo extra, worth it)** / pick a Cloud Firewall (or attach one in step 3).
+Web UI: New Project → New Server → CX23 / Debian 13 / your SSH key / **enable Backups (€1.30/mo extra, worth it)** / pick a Cloud Firewall (or attach one in step 3).
 
 Or via CLI:
 
 ```bash
 hcloud server create \
   --name 0bt \
-  --type cx22 \
+  --type cx23 \
   --image debian-13 \
   --ssh-key your-key-name \
   --datacenter hel1-dc2 \
@@ -139,10 +139,10 @@ EOF
 
 | Item                                     | Cost              |
 |------------------------------------------|-------------------|
-| Hetzner CX22                             | €4.51             |
-| CX22 backups (snapshots)                 | €1.30             |
+| Hetzner CX23                             | €3.49             |
+| CX23 backups (snapshots)                 | €1.30             |
 | Domain (.com average)                    | €1                |
-| **Total**                                | **~€7 / mo**      |
+| **Total**                                | **~€6 / mo**      |
 | Egress over the included 20 TB           | €1 / TB           |
 
 Compare with a hyperscaler: the same 20 TB of egress on AWS, GCP, or Azure costs roughly **$1,800/mo**. That's the reason this guide exists.

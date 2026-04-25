@@ -173,6 +173,33 @@ def test_announce_drops_private_when_proxy_configured(app_factory, monkeypatch):
         assert b"\x0a\x00\x00\x05" not in peer_bytes
 
 
+def test_seeder_hostname_returns_noncompact(app_factory, monkeypatch):
+    """When BT_PUBLIC_HOST is a hostname (not an IP), responses must use
+    non-compact dict form so the peer can resolve it themselves — server-side
+    resolution may give a wrong (platform-internal) address."""
+    monkeypatch.setenv("BT_PUBLIC_HOST", "shuttle.proxy.rlwy.net")
+    monkeypatch.setenv("BT_PUBLIC_PORT", "17187")
+    app, _ = app_factory()
+    with app.test_client() as c:
+        up = _upload(c)
+        ih = _info_hash_from_magnet(up["magnet"])
+        peer = b"-AA1111-" + b"x" * 12
+        r = c.get(
+            f"/announce?info_hash={quote_from_bytes(ih)}"
+            f"&peer_id={quote_from_bytes(peer)}"
+            "&port=6881&uploaded=0&downloaded=0&left=100&compact=1",
+            environ_base={"REMOTE_ADDR": "198.51.100.7"},
+        )
+        body = _bdecode(r.data)
+        assert b"failure reason" not in body
+        # Even though the client requested compact=1, the seeder is a hostname
+        # — server must downgrade to the non-compact list-of-dicts form.
+        assert isinstance(body[b"peers"], list)
+        seeder_dicts = [p for p in body[b"peers"] if p[b"ip"] == b"shuttle.proxy.rlwy.net"]
+        assert seeder_dicts, body[b"peers"]
+        assert seeder_dicts[0][b"port"] == 17187
+
+
 def test_magnet_includes_own_tracker(app_factory):
     app, _ = app_factory()
     with app.test_client() as c:

@@ -39,6 +39,10 @@ COPY app/ ./app/
 COPY wsgi.py ./
 COPY scripts/ ./scripts/
 COPY deploy/railway/ ./deploy/railway/
+# git/COPY may strip the +x bit depending on how the workspace was set up
+# (e.g. Editing a script via a tool that doesn't preserve mode). Make sure
+# every shell script in the deploy directory is executable.
+RUN chmod +x /app/deploy/railway/*.sh
 
 # /data holds the shared persistent storage. We don't declare VOLUME here
 # because Railway's own volume system is incompatible with Dockerfile VOLUME

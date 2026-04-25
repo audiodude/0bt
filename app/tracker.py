@@ -159,27 +159,18 @@ peers = PeerTable()
 # ---- deployed seeder address resolution --------------------------------------
 
 
-_seeder_cache: tuple[float, tuple[str, int] | None] = (0.0, None)
-_SEEDER_DNS_TTL = 300.0
+def _seeder_endpoint() -> tuple[str, int] | None:
+    """Return ``(host, port)`` for the deployed seeder, where ``host`` may be
+    either a literal IPv4 address or a DNS hostname.
 
-
-def _seeder_addr() -> tuple[str, int] | None:
-    global _seeder_cache
-    addr = settings.public_seeder_addr
-    if addr is None:
-        return None
-    host, port = addr
-    cached_ts, cached = _seeder_cache
-    now = time.time()
-    if cached is not None and (now - cached_ts) < _SEEDER_DNS_TTL and cached[1] == port:
-        return cached
-    try:
-        ip = socket.gethostbyname(host)
-    except OSError:
-        return None
-    val = (ip, port)
-    _seeder_cache = (now, val)
-    return val
+    Crucially, we do NOT resolve hostnames here. On platforms like Railway,
+    the in-container DNS view of the proxy domain returns an internal-only IP
+    that isn't reachable from the public internet — so resolving server-side
+    would publish a wrong address to peers. Returning the hostname lets each
+    peer resolve from its own (public) DNS view, which always gives the
+    externally-reachable address.
+    """
+    return settings.public_seeder_addr
 
 
 # ---- responses ---------------------------------------------------------------
@@ -232,7 +223,7 @@ def announce() -> Response:
     if f.removed:
         return _bencoded_failure("torrent removed")
 
-    seeder = _seeder_addr()
+    seeder = _seeder_endpoint()
     client_ip = _client_ip()
     behind_proxy = settings.public_seeder_addr is not None
 
@@ -264,18 +255,28 @@ def announce() -> Response:
         b"complete": complete,
         b"incomplete": incomplete,
     }
-    if compact:
+
+    # Compact (BEP-23) requires literal IPv4 in 6-byte format. Fall back to the
+    # non-compact dict form whenever any peer is given as a hostname (e.g. the
+    # deployed seeder advertised by name) — modern BT clients accept both.
+    def _is_ipv4(s: str) -> bool:
+        try:
+            socket.inet_aton(s)
+            return True
+        except OSError:
+            return False
+
+    use_compact = compact and all(_is_ipv4(host) for host, _, _ in out_peers)
+
+    if use_compact:
         buf = b""
         for ip4, port4, _left in out_peers:
-            try:
-                buf += socket.inet_aton(ip4) + struct.pack(">H", port4)
-            except OSError:
-                continue
+            buf += socket.inet_aton(ip4) + struct.pack(">H", port4)
         body[b"peers"] = buf
     else:
         body[b"peers"] = [
-            {b"peer id": peer_id, b"ip": ip4.encode(), b"port": port4}
-            for ip4, port4, _ in out_peers
+            {b"ip": host.encode(), b"port": port4}
+            for host, port4, _ in out_peers
         ]
     return _bencoded_ok(body)
 

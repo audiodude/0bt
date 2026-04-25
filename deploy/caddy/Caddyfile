@@ -1,0 +1,30 @@
+{
+    # Caddy auto-issues TLS for the configured domain.
+    email {$CADDY_ADMIN_EMAIL:admin@example.com}
+}
+
+{$CADDY_DOMAIN:localhost} {
+    # Allow large uploads.
+    request_body {
+        max_size 2GB
+    }
+
+    encode zstd gzip
+
+    # Static healthcheck pass-through.
+    handle /healthz {
+        reverse_proxy app:8080
+    }
+
+    # Everything else: pass to the Flask app.
+    handle {
+        reverse_proxy app:8080 {
+            flush_interval -1
+            transport http {
+                read_timeout 30m
+                write_timeout 30m
+                dial_timeout 10s
+            }
+        }
+    }
+}

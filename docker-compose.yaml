@@ -1,42 +1,85 @@
-version: "3.5"
+name: 0bt
+
 services:
-  python:
-    image: audiodude/0bt
-    container_name: 0bt
+  app:
+    build: .
+    image: 0bt-app:local
+    restart: unless-stopped
+    env_file: [.env]
+    environment:
+      FHOST_STORAGE_PATH: /data/up
+      FHOST_DB_URL: ${FHOST_DB_URL:-sqlite:////data/db/0bt.sqlite}
+      FHOST_BASE_URL: ${FHOST_BASE_URL:-http://localhost:8080}
+      FHOST_INTERNAL_TRACKER: ${FHOST_INTERNAL_TRACKER:-}
+      FHOST_TRACKERS: ${FHOST_TRACKERS:-}
+      TRANSMISSION_RPC_HOST: transmission
+      TRANSMISSION_RPC_PORT: 9091
     volumes:
-      - /opt/data:/var/www/data/up
-      - /opt/app/db:/app/db
-      - /opt/app/config:/app/config
+      - app_data:/data
     ports:
-      - 7321:7321
+      - "${APP_PORT:-8080}:8080"
+    depends_on:
+      transmission:
+        condition: service_started
+    networks: [zerobt]
 
   transmission:
-    image: linuxserver/transmission
-    container_name: transmission
-    environment:
-      - PUID=1000
-      - PGID=1000
-      - TZ=America/Los_Angeles
-      - USER=transmission
-      - PASS="${TRANSMISSION_PW}"
-    volumes:
-      - /opt/transmission/config:/config
-      - /opt/data:/downloads
-      - /opt/transmission/watch:/watch
-    ports:
-      - 9091:9091
-      - 51413:51413
-      - 51413:51413/udp
+    image: linuxserver/transmission:4.0.6
     restart: unless-stopped
+    environment:
+      PUID: "1000"
+      PGID: "1000"
+      TZ: ${TZ:-Etc/UTC}
+      USER: ${TRANSMISSION_RPC_USER:-transmission}
+      PASS: ${TRANSMISSION_RPC_PASSWORD:-change-me-or-die}
+    volumes:
+      - app_data:/data
+      - transmission_config:/config
+      - transmission_watch:/watch
+    ports:
+      # BT peer port (TCP+UDP). For Railway, expose only the TCP side via
+      # tcp-proxy. UDP is best-effort (DHT bootstrap still works outbound).
+      - "${BT_PEER_PORT:-51413}:51413"
+      - "${BT_PEER_PORT:-51413}:51413/udp"
+      # RPC is *not* exposed to the host by default — only on the internal
+      # network for the app container to reach.
+    networks: [zerobt]
 
   tracker:
     image: lednerb/opentracker-docker
-    container_name: tracker
-    ports:
-      - 5555:6969
-      - 5555:6969/udp
+    profiles: ["tracker"]
     restart: unless-stopped
+    ports:
+      - "${TRACKER_PORT:-6969}:6969"
+      - "${TRACKER_PORT:-6969}:6969/udp"
+    networks: [zerobt]
+
+  caddy:
+    image: caddy:2
+    profiles: ["caddy"]
+    restart: unless-stopped
+    environment:
+      CADDY_DOMAIN: ${CADDY_DOMAIN}
+    volumes:
+      - ./deploy/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    depends_on:
+      app:
+        condition: service_started
+    networks: [zerobt]
+
+volumes:
+  app_data:
+  transmission_config:
+  transmission_watch:
+  caddy_data:
+  caddy_config:
 
 networks:
-  default:
-    name: 0bt
+  zerobt:
+    driver: bridge

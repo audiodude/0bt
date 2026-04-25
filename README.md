@@ -56,18 +56,25 @@ See [`.env.example`](./.env.example) for the full list. Highlights:
 
 ## Architecture
 
-```
-┌──────────────┐  upload  ┌──────────┐ RPC ┌────────────────┐
-│  curl / web  │─────────▶│ app(Flask)│────▶│ transmission   │
-└──────────────┘  HTTP/BT └────┬─────┘     └────────┬───────┘
-                              │                     │ peer (51413)
-                              │ shared volume       │
-                              ▼                     ▼
-                        /data/up/<sha>     ─────  swarm  ─────
-                        /data/up/<sha>.torrent             other peers
+```mermaid
+flowchart LR
+    Client["curl / web client"]
+    App["app<br/>(Flask + gunicorn)"]
+    TR["transmission<br/>daemon"]
+    Vol[("/data/up/&lt;sha&gt;/<br/>file + meta.torrent")]
+    Swarm(("BT swarm"))
+    Peers["other peers<br/>(different hosts)"]
+
+    Client -- "upload (POST)" --> App
+    Client -- "HTTP / .torrent" --> App
+    App -- "RPC" --> TR
+    App -- "writes" --> Vol
+    TR -- "reads" --> Vol
+    TR -- "peer port (TCP)" --> Swarm
+    Swarm <--> Peers
 ```
 
-- **app** streams uploads to `/data/up`, hashes them, dedups, generates `.torrent`, then asks Transmission to seed.
+- **app** streams uploads to `/data/up`, hashes them, dedups, generates the `.torrent`, then asks Transmission to seed.
 - **transmission** seeds files from the same volume.
 - Magnets contain public trackers + DHT + a `webseed` (BEP-19) pointing at the HTTP URL, so peers can mix BT and HTTP.
 

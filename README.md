@@ -1,8 +1,10 @@
 # 0bt
 
-A no-bullshit file host that hands you back **both an HTTP URL and a BitTorrent magnet** for every upload. Fork of [0x0.st](https://0x0.st), originally extended for BT by [audiodude](https://github.com/audiodude/0bt).
+A no-bullshit file host that hands you back **both an HTTP URL and a BitTorrent magnet** for every upload.
 
-This is a 2026 ground-up rewrite focused on:
+Inspired by [0x0.st](https://0x0.st) (upstream at [git.0x0.st/mia/0x0](https://git.0x0.st/mia/0x0)). The earlier 0bt — which first extended a 0x0-style host with BitTorrent — was [audiodude/0bt (legacy branch)](../../tree/legacy). This codebase is a 2026 clean-room rewrite of the same idea, sharing no code with either, and is not a GitHub fork.
+
+The rewrite focuses on:
 - One-command local deploy: `docker compose up -d`
 - Modern Python 3.12 / Flask 3 / SQLAlchemy 2 stack
 - Streaming uploads up to 1.5 GiB (configurable) without spilling into RAM

@@ -3,7 +3,7 @@
     email {$CADDY_ADMIN_EMAIL:admin@example.com}
 }
 
-{$CADDY_DOMAIN:localhost} {
+{$CADDY_DOMAIN} {
     # Allow large uploads.
     request_body {
         max_size 2GB

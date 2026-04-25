@@ -1,29 +1,16 @@
-"""HTTP BitTorrent tracker — replaces an external opentracker.
+"""HTTP BitTorrent tracker (BEP-3 / BEP-23).
 
-Why this lives in the app process: when the deployed transmission sits behind
-a TCP proxy that translates ports (Railway), no external tracker can correctly
-publish the seeder's reachable address. opentracker and public trackers both
-record the announcer's source IP, which is the platform's egress address
-(unreachable inbound), not the public proxy domain.
+The app advertises itself as a tracker (`/announce` + `/scrape`) and prepends
+its own announce URL to every magnet. On a normal deployment with a real
+public IP this is a useful low-latency complement to public trackers and DHT —
+peers often find each other via the in-app tracker before public-tracker
+discovery has even completed its first scrape.
 
-The app is the one component that knows both:
-  - the info_hash of every uploaded file (from the File table)
-  - the proxy host:port the deployment was given
-…so it can synthesise the right peer for every announce.
-
-Behavioural rules:
-  - Only info_hashes we know about (i.e. were uploaded through this app) are
-    served. This keeps random clients from using us as a free public tracker.
-  - When BT_PUBLIC_HOST/PORT are configured, every announce response is
-    augmented with that address as a confirmed seeder.
-  - Announces from RFC1918 / loopback ranges are *not* registered as peers
-    when running behind a proxy: those are our own internal services
-    (transmission), not real peers, and their self-reported address would
-    mislead other clients.
+Only info_hashes the app actually owns (i.e. were uploaded through it) are
+served, so we're not a free public tracker for arbitrary clients.
 """
 from __future__ import annotations
 
-import ipaddress
 import socket
 import struct
 import time
@@ -34,7 +21,6 @@ from urllib.parse import unquote_to_bytes
 from flask import Response, request
 from sqlalchemy import select
 
-from .config import settings
 from .models import File, db
 
 
@@ -93,14 +79,6 @@ def _client_ip() -> str:
     return request.remote_addr or "0.0.0.0"
 
 
-def _is_private(ip: str) -> bool:
-    try:
-        a = ipaddress.ip_address(ip)
-    except ValueError:
-        return True  # treat unparseable as private (unsafe to advertise)
-    return a.is_private or a.is_loopback or a.is_link_local or a.is_unspecified
-
-
 # ---- peer registry -----------------------------------------------------------
 
 
@@ -156,23 +134,6 @@ class PeerTable:
 peers = PeerTable()
 
 
-# ---- deployed seeder address resolution --------------------------------------
-
-
-def _seeder_endpoint() -> tuple[str, int] | None:
-    """Return ``(host, port)`` for the deployed seeder, where ``host`` may be
-    either a literal IPv4 address or a DNS hostname.
-
-    Crucially, we do NOT resolve hostnames here. On platforms like Railway,
-    the in-container DNS view of the proxy domain returns an internal-only IP
-    that isn't reachable from the public internet — so resolving server-side
-    would publish a wrong address to peers. Returning the hostname lets each
-    peer resolve from its own (public) DNS view, which always gives the
-    externally-reachable address.
-    """
-    return settings.public_seeder_addr
-
-
 # ---- responses ---------------------------------------------------------------
 
 
@@ -196,7 +157,6 @@ def announce() -> Response:
         return _bencoded_failure("invalid info_hash")
     if len(peer_id) != 20:
         return _bencoded_failure("invalid peer_id")
-
     try:
         port = int((p.get("port") or [b"0"])[0])
     except ValueError:
@@ -214,7 +174,6 @@ def announce() -> Response:
     except ValueError:
         numwant = 50
 
-    # Only serve info_hashes we know about.
     f = db.session.execute(
         select(File).where(File.info_hash == info_hash.hex())
     ).scalar_one_or_none()
@@ -223,31 +182,14 @@ def announce() -> Response:
     if f.removed:
         return _bencoded_failure("torrent removed")
 
-    seeder = _seeder_endpoint()
     client_ip = _client_ip()
-    behind_proxy = settings.public_seeder_addr is not None
-
-    # When deployed behind a proxy, drop announces from RFC1918/loopback/etc —
-    # those are our internal services (transmission) reaching us via the
-    # private network, not external peers, and their self-reported address
-    # would mislead the swarm. The seeder injection below is what advertises
-    # the deployed transmission correctly.
     if event == "stopped":
         peers.remove(info_hash, peer_id)
-    elif behind_proxy and _is_private(client_ip):
-        pass
     else:
         peers.upsert(info_hash, peer_id, client_ip, port, left)
 
-    out_peers: list[tuple[str, int, int]] = []
-    if seeder is not None:
-        out_peers.append((seeder[0], seeder[1], 0))
-    out_peers.extend(peers.get(info_hash, exclude=peer_id))
-    out_peers = out_peers[:numwant]
-
+    out_peers = peers.get(info_hash, exclude=peer_id)[:numwant]
     complete, incomplete = peers.stats(info_hash)
-    if seeder is not None:
-        complete = max(complete, 1)
 
     body: dict = {
         b"interval": 1800,
@@ -255,23 +197,13 @@ def announce() -> Response:
         b"complete": complete,
         b"incomplete": incomplete,
     }
-
-    # Compact (BEP-23) requires literal IPv4 in 6-byte format. Fall back to the
-    # non-compact dict form whenever any peer is given as a hostname (e.g. the
-    # deployed seeder advertised by name) — modern BT clients accept both.
-    def _is_ipv4(s: str) -> bool:
-        try:
-            socket.inet_aton(s)
-            return True
-        except OSError:
-            return False
-
-    use_compact = compact and all(_is_ipv4(host) for host, _, _ in out_peers)
-
-    if use_compact:
+    if compact:
         buf = b""
         for ip4, port4, _left in out_peers:
-            buf += socket.inet_aton(ip4) + struct.pack(">H", port4)
+            try:
+                buf += socket.inet_aton(ip4) + struct.pack(">H", port4)
+            except OSError:
+                continue
         body[b"peers"] = buf
     else:
         body[b"peers"] = [
@@ -285,7 +217,6 @@ def scrape() -> Response:
     p = _parse_query_bytes()
     hashes = p.get("info_hash") or []
     files: dict[bytes, dict] = {}
-    seeder = _seeder_addr()
     for h in hashes:
         if len(h) != 20:
             continue
@@ -295,11 +226,5 @@ def scrape() -> Response:
         if f is None or f.removed:
             continue
         complete, incomplete = peers.stats(h)
-        if seeder is not None:
-            complete = max(complete, 1)
-        files[h] = {
-            b"complete": complete,
-            b"incomplete": incomplete,
-            b"downloaded": 0,
-        }
+        files[h] = {b"complete": complete, b"incomplete": incomplete, b"downloaded": 0}
     return _bencoded_ok({b"files": files})

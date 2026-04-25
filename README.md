@@ -5,12 +5,11 @@ A no-bullshit file host that hands you back **both an HTTP URL and a BitTorrent 
 Inspired by [0x0.st](https://0x0.st) (upstream at [git.0x0.st/mia/0x0](https://git.0x0.st/mia/0x0)). The earlier 0bt — which first extended a 0x0-style host with BitTorrent — was [audiodude/0bt (legacy branch)](../../tree/legacy). This codebase is a 2026 clean-room rewrite of the same idea, sharing no code with either, and is not a GitHub fork.
 
 The rewrite focuses on:
-- One-command local deploy: `docker compose up -d`
+- One-command deploy: `docker compose up -d`
 - Modern Python 3.12 / Flask 3 / SQLAlchemy 2 stack
 - Streaming uploads up to 1.5 GiB (configurable) without spilling into RAM
 - Auto-generated `.torrent` files seeded by an in-cluster Transmission daemon
-- Cross-host BitTorrent swarming via public trackers + DHT (with optional self-hosted tracker)
-- Deployable to Railway (multi-service)
+- An in-app HTTP tracker (`/announce` + `/scrape`) — low-latency local peer discovery alongside public trackers + DHT
 
 ## Quick start (local)
 
@@ -33,15 +32,25 @@ http://localhost:8080/AbCdEf.torrent
 magnet:?xt=urn:btih:...&dn=somefile.bin&tr=...
 ```
 
-Pass any of those to a BitTorrent client (transmission, qBittorrent, etc.) and it will join the swarm. The first peer is the in-cluster Transmission instance.
+Pass any of those to a BitTorrent client (Transmission, qBittorrent, etc.) and it joins the swarm. The first peer is the in-cluster Transmission instance.
 
-## With TLS (Caddy profile)
+## Production deploy (TLS, your domain)
+
+For a real deployment you almost certainly want a public IP, your own domain, and TLS:
 
 ```bash
-CADDY_DOMAIN=files.example.com docker compose --profile caddy up -d --build
+# In .env
+FHOST_BASE_URL=https://files.example.com
+CADDY_DOMAIN=files.example.com
+CADDY_ADMIN_EMAIL=you@example.com
+
+# Bring up the full stack
+docker compose --profile caddy up -d --build
 ```
 
-Caddy will auto-issue a Let's Encrypt cert and serve the app on HTTPS. Set `FHOST_BASE_URL=https://files.example.com` so generated magnets and torrent URLs point at the right place.
+Caddy auto-issues a Let's Encrypt cert and reverse-proxies the app. Open ports `80`, `443`, and `51413` (TCP+UDP) on your firewall.
+
+The recommended hosting target is a small VPS with generous bundled egress (egress is the dominant cost for any file host). See [`docs/deploy-hetzner.md`](./docs/deploy-hetzner.md) for an end-to-end walkthrough on Hetzner Cloud CX22 (~€5/mo, 20 TB included).
 
 ## Configuration
 
@@ -53,8 +62,9 @@ See [`.env.example`](./.env.example) for the full list. Highlights:
 | `FHOST_MAX_CONTENT_LENGTH`  | `1610612736` (1.5 GiB)                 | Max upload size in bytes.               |
 | `FHOST_TRACKERS`            | several public trackers                | Embedded in every magnet.               |
 | `FHOST_INTERNAL_TRACKER`    | `""`                                   | Optional self-hosted tracker URL.       |
+| `BT_PEER_PORT`              | `51413`                                | Host port mapped to transmission.       |
 | `TRANSMISSION_RPC_PASSWORD` | `change-me-or-die`                     | **Change this.**                        |
-| `FHOST_USE_X_ACCEL_REDIRECT`| `0`                                    | `1` for nginx-style accel.              |
+| `CADDY_DOMAIN`              | unset                                  | Required when using `--profile caddy`.  |
 
 ## Architecture
 
@@ -77,38 +87,18 @@ flowchart LR
 ```
 
 - **app** streams uploads to `/data/up`, hashes them, dedups, generates the `.torrent`, then asks Transmission to seed.
-- **transmission** seeds files from the same volume.
-- Magnets contain public trackers + DHT + a `webseed` (BEP-19) pointing at the HTTP URL, so peers can mix BT and HTTP.
+- **transmission** seeds files from the same volume; listens for peer connections on `BT_PEER_PORT`.
+- **caddy** (optional profile) terminates TLS and reverse-proxies `/`.
+- **`/announce` and `/scrape`** are served by the app itself (see [`app/tracker.py`](./app/tracker.py)) and prepended to every magnet, alongside public trackers and DHT.
 
-## Deploy to Railway
-
-The compose stack assumes shared volumes between the app and Transmission containers, which Railway doesn't support (one volume per service). For Railway, the bundled `Dockerfile.railway` packages everything (Flask app + transmission-daemon + a small socat bridge) under supervisord in a single image, attached to one volume.
-
-There's an automated deploy at [`scripts/railway-deploy.py`](./scripts/railway-deploy.py):
+## Tests
 
 ```bash
-export RAILWAY_TOKEN=...
-python3 scripts/railway-deploy.py \
-    --project-id <PROJECT_UUID> \
-    --env-id <ENVIRONMENT_UUID> \
-    --repo audiodude/0bt \
-    --branch rewrite-2026
+python3 -m venv .venv && .venv/bin/pip install -e '.[dev]'
+.venv/bin/pytest          # unit tests
+scripts/acceptance.sh     # uploads + downloads various sizes against a running stack
+scripts/swarm-test.sh     # cross-host BitTorrent swarm via a self-hosted opentracker
 ```
-
-The script (idempotently):
-1. Creates the `app` service from this repo + branch.
-2. Creates a 5-GiB volume mounted at `/data`.
-3. Allocates a `*.up.railway.app` HTTP domain and points `FHOST_BASE_URL` at it.
-4. Allocates a TCP proxy for the BT peer port and sets `BT_PEER_PORT`,
-   `BT_BRIDGE_FROM`, `BT_PUBLIC_HOST`, `BT_ANNOUNCE_PORT` so transmission
-   announces (and listens on) the externally-reachable port.
-5. Triggers a redeploy.
-
-### How peers discover the deployed seeder
-
-External BT trackers (opentracker included) and DHT both record the *source IP* of an announce, which behind a TCP proxy is the platform's egress address — unreachable inbound. To work around this, **the app runs its own HTTP tracker at `/announce`** (see [`app/tracker.py`](./app/tracker.py)). It's the first `tr=` entry in every magnet, and it serves the deployed seeder's public host:port (taken from `BT_PUBLIC_HOST` / `BT_PUBLIC_PORT`) as a peer for any info_hash the app owns. Hostnames are passed through *unresolved* so peers resolve them from their own (public-internet) DNS view rather than the platform's internal one. [`scripts/swarm-test-railway.sh`](./scripts/swarm-test-railway.sh) verifies this end-to-end without using `connect_peer` hints.
-
-Public trackers and DHT remain in the magnet for swarm fan-out once any peer is reachable; the in-app tracker is what makes the deployed instance discoverable in the first place.
 
 ## License
 

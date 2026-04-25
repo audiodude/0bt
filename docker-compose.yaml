@@ -1,5 +1,13 @@
 name: 0bt
 
+# Default `docker compose up -d` brings up app + transmission for plain HTTP
+# on $APP_PORT (8080 by default). For a TLS production deployment, also enable
+# the `caddy` profile and set CADDY_DOMAIN + FHOST_BASE_URL:
+#
+#   docker compose --profile caddy up -d
+#
+# See docs/deploy-hetzner.md for the full VPS walkthrough.
+
 services:
   app:
     build: .
@@ -10,8 +18,8 @@ services:
       FHOST_STORAGE_PATH: /data/up
       FHOST_DB_URL: ${FHOST_DB_URL:-sqlite:////data/db/0bt.sqlite}
       FHOST_BASE_URL: ${FHOST_BASE_URL:-http://localhost:8080}
-      FHOST_INTERNAL_TRACKER: ${FHOST_INTERNAL_TRACKER:-}
       FHOST_TRACKERS: ${FHOST_TRACKERS:-}
+      FHOST_INTERNAL_TRACKER: ${FHOST_INTERNAL_TRACKER:-}
       TRANSMISSION_RPC_HOST: transmission
       TRANSMISSION_RPC_PORT: 9091
     volumes:
@@ -37,21 +45,8 @@ services:
       - transmission_config:/config
       - transmission_watch:/watch
     ports:
-      # BT peer port (TCP+UDP). For Railway, expose only the TCP side via
-      # tcp-proxy. UDP is best-effort (DHT bootstrap still works outbound).
       - "${BT_PEER_PORT:-51413}:51413"
       - "${BT_PEER_PORT:-51413}:51413/udp"
-      # RPC is *not* exposed to the host by default — only on the internal
-      # network for the app container to reach.
-    networks: [zerobt]
-
-  tracker:
-    image: lednerb/opentracker-docker
-    profiles: ["tracker"]
-    restart: unless-stopped
-    ports:
-      - "${TRACKER_PORT:-6969}:6969"
-      - "${TRACKER_PORT:-6969}:6969/udp"
     networks: [zerobt]
 
   caddy:
@@ -59,7 +54,8 @@ services:
     profiles: ["caddy"]
     restart: unless-stopped
     environment:
-      CADDY_DOMAIN: ${CADDY_DOMAIN}
+      CADDY_DOMAIN: ${CADDY_DOMAIN:-}
+      CADDY_ADMIN_EMAIL: ${CADDY_ADMIN_EMAIL:-}
     volumes:
       - ./deploy/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data

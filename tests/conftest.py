@@ -17,10 +17,12 @@ def app_factory(monkeypatch):
         monkeypatch.setenv("TRANSMISSION_RPC_HOST", "127.0.0.1")
         monkeypatch.setenv("TRANSMISSION_RPC_PORT", "1")  # always-down
         monkeypatch.setenv("FHOST_TRACKERS", "udp://tracker.example:6969/announce")
-        # Force the config dataclass to re-read env
+        # Force the config dataclass to re-read env, and reset module state
+        # (peer table) so tests don't see leftovers from earlier tests.
         import importlib
-        from app import config as cfg, main
+        from app import config as cfg, main, tracker
         importlib.reload(cfg)
+        importlib.reload(tracker)
         importlib.reload(main)
         app = main.create_app()
         app.config["TESTING"] = True

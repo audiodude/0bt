@@ -114,6 +114,16 @@ def create_app(*, init_db: bool = True) -> Flask:
 
     # ---- Routes -------------------------------------------------------------
 
+    from . import tracker as _tracker
+
+    @app.get("/announce")
+    def _announce():
+        return _tracker.announce()
+
+    @app.get("/scrape")
+    def _scrape():
+        return _tracker.scrape()
+
     @app.get("/healthz")
     def healthz():
         ok = True
@@ -368,5 +378,6 @@ curl -F "shorten=https://example.com/some/long/url" {settings.base_url}
     return Response(body, mimetype="text/html")
 
 
-# Module-level app for gunicorn
-app = create_app()
+# Note: there is no module-level `app = create_app()` here — wsgi.py is the
+# gunicorn entry point so that importing `app.tracker`, `app.storage`, etc.
+# from tests or scripts doesn't eagerly create directories or open the DB.

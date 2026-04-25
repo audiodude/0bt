@@ -31,6 +31,7 @@ RUN pip install --no-cache-dir \
         "requests>=2.31,<3"
 
 COPY app/ ./app/
+COPY wsgi.py ./
 COPY scripts/ ./scripts/
 
 # Persistent data lives at /data.
@@ -47,4 +48,4 @@ ENV GUNICORN_WORKERS=2 \
     GUNICORN_TIMEOUT=600 \
     PORT=8080
 
-CMD ["sh", "-c", "exec gunicorn --bind 0.0.0.0:${PORT} --workers ${GUNICORN_WORKERS} --timeout ${GUNICORN_TIMEOUT} --access-logfile - --error-logfile - 'app:app'"]
+CMD ["sh", "-c", "exec gunicorn --bind 0.0.0.0:${PORT} --workers ${GUNICORN_WORKERS} --timeout ${GUNICORN_TIMEOUT} --access-logfile - --error-logfile - 'wsgi:app'"]

@@ -36,6 +36,7 @@ RUN pip install --no-cache-dir \
         "requests>=2.31,<3"
 
 COPY app/ ./app/
+COPY wsgi.py ./
 COPY scripts/ ./scripts/
 COPY deploy/railway/ ./deploy/railway/
 

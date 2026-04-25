@@ -24,7 +24,7 @@ hcloud server create \
   --type cx23 \
   --image debian-13 \
   --ssh-key your-key-name \
-  --datacenter hel1-dc2 \
+  --location hel1 \
   --enable-backup
 hcloud server ip 0bt   # note the public IPv4
 ```
